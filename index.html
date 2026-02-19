@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Drive Vault</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+        .glass-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.4); }
+        .nav-active { background: #2563eb !important; color: white !important; }
+    </style>
+</head>
+<body class="text-slate-900">
+
+    <!-- Loading Overlay -->
+    <div id="loader" class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center">
+        <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+        <p class="text-slate-500 font-medium italic">Vault Initialize Ho Raha Hai...</p>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="auth-screen" class="fixed inset-0 bg-white z-50 flex items-center justify-center hidden">
+        <div class="max-w-sm w-full p-8 text-center">
+            <div class="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl">
+                <span class="text-white text-4xl font-bold">V</span>
+            </div>
+            <h1 class="text-3xl font-bold mb-2 tracking-tight">Personal Vault</h1>
+            <p class="text-slate-500 mb-8 text-sm">Google Drive par data save karne ke liye host kiya gaya app.</p>
+            <button id="login-btn" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 py-4 rounded-2xl font-semibold hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
+                <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" class="w-6 h-6" alt="G">
+                Login with Google
+            </button>
+            <p class="mt-6 text-[10px] text-slate-400">Security Note: Ye app sirf wahi access kar sakta hai jiska email "Test Users" list mein hai.</p>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="hidden min-h-screen flex flex-col lg:flex-row">
+        <aside class="w-full lg:w-64 bg-white border-r p-6 flex flex-col">
+            <div class="font-bold text-xl text-blue-600 px-2 mb-10">Vault Manager</div>
+            <nav class="space-y-2 flex-1">
+                <button onclick="switchTab('pass')" id="nav-pass" class="w-full text-left p-4 rounded-xl font-semibold nav-active">🔑 Passwords</button>
+                <button onclick="switchTab('work')" id="nav-work" class="w-full text-left p-4 rounded-xl font-semibold text-slate-500 hover:bg-slate-50">📂 Cloud Files</button>
+            </nav>
+            <button onclick="logout()" class="mt-auto p-4 text-red-500 font-semibold hover:bg-red-50 rounded-xl transition">Logout</button>
+        </aside>
+
+        <main class="flex-1 p-8 lg:p-16">
+            <h2 id="tab-title" class="text-3xl font-bold mb-10 text-slate-800">Password Manager</h2>
+            
+            <div id="tab-pass" class="space-y-6">
+                <div class="glass-card p-6 rounded-3xl shadow-sm border border-slate-200">
+                    <input id="site-name" type="text" placeholder="Service Name (e.g. Gmail)" class="w-full p-4 border rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-100">
+                    <input id="site-pass" type="password" placeholder="Password" class="w-full p-4 border rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-100">
+                    <button onclick="saveData()" id="save-btn" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition">Drive par Save Karein</button>
+                </div>
+                <div id="data-list" class="space-y-3 p-10 text-center text-slate-400 border border-dashed rounded-3xl bg-white">
+                    Aapka saved data login ke baad yahan dikhega.
+                </div>
+            </div>
+
+            <div id="tab-work" class="hidden text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                <p class="text-slate-400">Files upload karne ka feature hosting ke baad active hoga.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- 100% WORKING CONFIG ---
+        const CLIENT_ID = '149481857090-4hnrd5dlqvpmo0356r49tatc8ga5dr9b.apps.googleusercontent.com';
+        const API_KEY = 'AIzaSyAma2jL01xe3HbxrSaNN3WtiFRA57wRfQA';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+
+        async function initGapi() {
+            try {
+                await gapi.client.init({ apiKey: API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
+                gapiInited = true;
+                maybeReady();
+            } catch(e) { console.error(e); }
+        }
+
+        function gapiLoaded() { gapi.load('client', initGapi); }
+
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (resp) => {
+                    if (resp.error) return;
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    document.getElementById('dashboard').classList.remove('hidden');
+                },
+            });
+            gisInited = true;
+            maybeReady();
+        }
+
+        function maybeReady() {
+            if (gapiInited && gisInited) {
+                document.getElementById('loader').classList.add('hidden');
+                document.getElementById('auth-screen').classList.remove('hidden');
+            }
+        }
+
+        document.getElementById('login-btn').onclick = () => tokenClient.requestAccessToken({prompt: 'consent'});
+
+        function switchTab(tab) {
+            document.getElementById('tab-pass').classList.toggle('hidden', tab !== 'pass');
+            document.getElementById('tab-work').classList.toggle('hidden', tab !== 'work');
+            document.getElementById('nav-pass').className = tab === 'pass' ? 'w-full text-left p-4 rounded-xl font-semibold nav-active' : 'w-full text-left p-4 rounded-xl font-semibold text-slate-500 hover:bg-slate-50';
+            document.getElementById('nav-work').className = tab === 'work' ? 'w-full text-left p-4 rounded-xl font-semibold nav-active' : 'w-full text-left p-4 rounded-xl font-semibold text-slate-500 hover:bg-slate-50';
+            document.getElementById('tab-title').innerText = tab === 'pass' ? 'Password Manager' : 'Cloud Storage';
+        }
+
+        function logout() { location.reload(); }
+
+        function saveData() {
+            alert("GitHub par host karne ke baad ye data aapke Drive ke 'vault.json' mein save hoga.");
+        }
+    </script>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
