@@ -1,226 +1,363 @@
-<!DOCTYPE html>
-<html lang="hi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Drive Vault</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
-        .glass-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.4); }
-        .nav-active { background: #2563eb !important; color: white !important; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4); }
-    </style>
-</head>
-<body class="text-slate-900">
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  HardDrive, KeyRound, Menu, X, Plus, UploadCloud, 
+  Trash2, Search, ShieldCheck, ChevronRight, LogOut,
+  Folder, File, MoreVertical, ExternalLink, ChevronLeft,
+  FolderPlus, Grid, List, CheckCircle2, AlertTriangle
+} from 'lucide-react';
 
-    <!-- Screen: Loader -->
-    <div id="loader" class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center">
-        <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-        <p class="text-slate-500 font-medium italic">Vault Initialize Ho Raha Hai...</p>
-    </div>
+// --- Using your provided credentials ---
+const CLIENT_ID = '149481857090-4hnrd5dlqvpmo0356r49tatc8ga5dr9b.apps.googleusercontent.com'; 
+const API_KEY = 'AIzaSyAma2jL01xe3HbxrSaNN3WtiFRA57wRfQA'; 
 
-    <!-- Screen: Login -->
-    <div id="auth-screen" class="fixed inset-0 bg-white z-50 flex items-center justify-center hidden">
-        <div class="max-w-sm w-full p-8 text-center">
-            <div class="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl">
-                <span class="text-white text-4xl font-bold">V</span>
-            </div>
-            <h1 class="text-3xl font-bold mb-2">Drive Vault</h1>
-            <p class="text-slate-500 mb-8 text-sm">Authorized for: txsmxv.github.io</p>
-            <button id="login-btn" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 py-4 rounded-2xl font-semibold hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
-                <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" class="w-6 h-6" alt="G">
-                Continue with Google
-            </button>
-        </div>
-    </div>
+const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly";
 
-    <!-- Screen: Dashboard -->
-    <div id="dashboard" class="hidden min-h-screen flex flex-col lg:flex-row">
-        <aside class="w-full lg:w-64 bg-white border-r p-6 flex flex-col">
-            <div class="font-bold text-xl text-blue-600 px-2 mb-10">Mera Vault</div>
-            <nav class="space-y-2 flex-1">
-                <button onclick="switchTab('pass')" id="nav-pass" class="w-full text-left p-4 rounded-xl font-semibold nav-active">🔑 Passwords</button>
-                <button onclick="switchTab('work')" id="nav-work" class="w-full text-left p-4 rounded-xl font-semibold text-slate-500 hover:bg-slate-50">📂 Backup Files</button>
-            </nav>
-            <button onclick="logout()" class="mt-auto p-4 text-red-500 font-semibold hover:bg-red-50 rounded-xl transition">🚪 Logout</button>
-        </aside>
+export default function App() {
+  const [gapiInited, setGapiInited] = useState(false);
+  const [gisInited, setGisInited] = useState(false);
+  const [user, setUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('drive');
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
+  const [apiError, setApiError] = useState(null);
+  
+  const [files, setFiles] = useState([]);
+  const [currentFolderId, setCurrentFolderId] = useState('root');
+  const [folderHistory, setFolderHistory] = useState(['root']);
+  const [loading, setLoading] = useState(false);
+  const [tokenClient, setTokenClient] = useState(null);
+  const [toast, setToast] = useState({ show: false, msg: '' });
 
-        <main class="flex-1 p-8 lg:p-16 overflow-y-auto">
-            <header class="flex justify-between items-center mb-10">
-                <h2 id="tab-title" class="text-3xl font-bold text-slate-800">Password Manager</h2>
-                <div id="status-tag" class="text-xs bg-slate-100 px-3 py-1 rounded-full text-slate-500">Cloud Connected</div>
-            </header>
-
-            <div id="tab-pass" class="space-y-8">
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <input id="site-name" type="text" placeholder="Service (e.g. Facebook)" class="w-full p-4 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-100 bg-slate-50">
-                        <input id="site-pass" type="text" placeholder="Password" class="w-full p-4 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-100 bg-slate-50">
-                    </div>
-                    <button onclick="saveVaultData()" id="save-btn" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
-                        <span id="btn-text">💾 Save to My Google Drive</span>
-                    </button>
-                </div>
-                
-                <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-slate-500 uppercase text-xs tracking-widest">Saved Passwords</h3>
-                    <button onclick="fetchVaultData()" class="text-blue-600 text-xs font-bold hover:underline">Sync Now</button>
-                </div>
-
-                <div id="vault-list" class="space-y-3">
-                    <!-- Data will load here -->
-                    <div class="p-12 text-center text-slate-400 bg-white border-2 border-dashed rounded-3xl">
-                        Loading your cloud data...
-                    </div>
-                </div>
-            </div>
-
-            <div id="tab-work" class="hidden">
-                <div class="bg-white p-20 rounded-3xl border-2 border-dashed text-center">
-                    <p class="text-slate-500">Full file backup integration active.</p>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <script>
-        const CLIENT_ID = '149481857090-4hnrd5dlqvpmo0356r49tatc8ga5dr9b.apps.googleusercontent.com';
-        const API_KEY = 'AIzaSyAma2jL01xe3HbxrSaNN3WtiFRA57wRfQA';
-        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-        const FILENAME = 'vault_data.json';
-
-        let accessToken = null;
-        let tokenClient;
-        let gapiInited = false;
-        let gisInited = false;
-        let savedPasswords = [];
-
-        // Initialize
-        async function initGapi() {
-            await gapi.client.init({ apiKey: API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
-            gapiInited = true;
-            maybeReady();
+  useEffect(() => {
+    const initGapi = () => {
+      window.gapi.load('client', async () => {
+        try {
+          await window.gapi.client.init({
+            apiKey: API_KEY,
+            discoveryDocs: DISCOVERY_DOCS,
+          });
+          setGapiInited(true);
+        } catch (err) {
+          console.error("GAPI Error:", err);
+          setApiError("Google API Key validation failed. Please check Console settings.");
         }
-        function gapiLoaded() { gapi.load('client', initGapi); }
+      });
+    };
 
-        function gisLoaded() {
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: (resp) => {
-                    if (resp.error) return;
-                    accessToken = resp.access_token;
-                    showDashboard();
-                },
-            });
-            gisInited = true;
-            maybeReady();
-        }
-
-        function maybeReady() {
-            if (gapiInited && gisInited) {
-                document.getElementById('loader').classList.add('hidden');
-                document.getElementById('auth-screen').classList.remove('hidden');
+    const initGis = () => {
+      try {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: async (resp) => {
+            if (resp.error) {
+              console.error("Auth Error:", resp.error);
+              setApiError("Authorization Error: " + resp.error);
+              return;
             }
+            setUser(resp);
+            showToast("Cloud Access Granted!");
+            listDriveFiles('root');
+          },
+        });
+        setTokenClient(client);
+        setGisInited(true);
+      } catch (err) {
+        console.error("GIS Init Error:", err);
+      }
+    };
+
+    const gapiScript = document.createElement('script');
+    gapiScript.src = "https://apis.google.com/js/api.js";
+    gapiScript.onload = initGapi;
+    document.body.appendChild(gapiScript);
+
+    const gisScript = document.createElement('script');
+    gisScript.src = "https://accounts.google.com/gsi/client";
+    gisScript.onload = initGis;
+    document.body.appendChild(gisScript);
+  }, []);
+
+  const handleAuth = () => {
+    if (tokenClient) {
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+  };
+
+  const showToast = (msg) => {
+    setToast({ show: true, msg });
+    setTimeout(() => setToast({ show: false, msg: '' }), 3000);
+  };
+
+  const listDriveFiles = async (folderId = 'root') => {
+    if (!window.gapi.client.drive) return;
+    setLoading(true);
+    try {
+      const response = await window.gapi.client.drive.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: 'files(id, name, mimeType, iconLink, webViewLink, thumbnailLink, size)',
+        orderBy: 'folder,name'
+      });
+      setFiles(response.result.files || []);
+      setCurrentFolderId(folderId);
+    } catch (err) {
+      console.error("Drive Error:", err);
+      showToast("Data fetch karne mein galti hui.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const navigateToFolder = (folderId) => {
+    setFolderHistory(prev => [...prev, folderId]);
+    listDriveFiles(folderId);
+  };
+
+  const goBack = () => {
+    if (folderHistory.length > 1) {
+      const newHistory = [...folderHistory];
+      newHistory.pop();
+      const prevFolderId = newHistory[newHistory.length - 1];
+      setFolderHistory(newHistory);
+      listDriveFiles(prevFolderId);
+    }
+  };
+
+  const createFolder = async () => {
+    const name = prompt("Folder ka naam:");
+    if (!name) return;
+    try {
+      await window.gapi.client.drive.files.create({
+        resource: {
+          name,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [currentFolderId]
         }
+      });
+      showToast("Folder Created!");
+      listDriveFiles(currentFolderId);
+    } catch (err) {
+      showToast("Create folder failed.");
+    }
+  };
 
-        function showDashboard() {
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('dashboard').classList.remove('hidden');
-            fetchVaultData();
-        }
+  if (!user) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-[#0a0f1d] text-white p-6">
+        <div className="bg-[#161b2c] p-10 rounded-[2.5rem] shadow-2xl border border-white/5 text-center max-w-md w-full relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent"></div>
+          <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(37,99,235,0.3)]">
+            <ShieldCheck className="w-14 h-14 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold mb-4">Corporate Drive</h1>
+          <p className="text-slate-400 mb-10 text-sm leading-relaxed">
+            Please authorize to access your secure cloud files via Google Drive.
+          </p>
+          
+          {apiError && (
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl mb-6 text-red-400 text-xs flex items-start gap-2 text-left">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{apiError}</span>
+            </div>
+          )}
 
-        document.getElementById('login-btn').onclick = () => tokenClient.requestAccessToken({prompt: 'consent'});
+          <button 
+            onClick={handleAuth}
+            disabled={!gapiInited || !gisInited}
+            className="w-full py-4 bg-white text-slate-900 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-blue-50 transition-all disabled:opacity-50"
+          >
+            <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" className="w-6 h-6" alt="G" />
+            Sign in with Google
+          </button>
+          
+          {!gapiInited && !apiError && (
+            <div className="mt-6 flex items-center justify-center gap-2">
+              <div className="w-1 h-1 bg-blue-500 rounded-full animate-ping"></div>
+              <span className="text-[10px] text-blue-400 font-mono tracking-widest uppercase">System Initializing</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
-        // Drive Logic: Fetch Data
-        async function fetchVaultData() {
-            try {
-                const response = await gapi.client.drive.files.list({
-                    q: `name = '${FILENAME}' and trashed = false`,
-                    fields: 'files(id, name)',
-                });
-                const files = response.result.files;
-                if (files && files.length > 0) {
-                    const fileId = files[0].id;
-                    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-                    savedPasswords = await res.json();
-                    renderList();
-                } else {
-                    document.getElementById('vault-list').innerHTML = '<div class="p-8 text-center text-slate-400 bg-white border rounded-3xl">No data found in your Drive. Save something!</div>';
-                }
-            } catch (e) { console.error(e); }
-        }
+  return (
+    <div className="flex h-screen bg-[#f1f5f9] text-slate-800 font-sans overflow-hidden">
+      
+      {/* Sidebar Overlay (Mobile) */}
+      {sidebarOpen && <div className="fixed inset-0 bg-slate-900/60 z-40 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)}></div>}
 
-        // Drive Logic: Save Data
-        async function saveVaultData() {
-            const name = document.getElementById('site-name').value;
-            const pass = document.getElementById('site-pass').value;
-            if(!name || !pass) return alert("Bharein!");
+      {/* Sidebar */}
+      <aside className={`fixed lg:relative inset-y-0 left-0 z-50 w-72 bg-[#0f172a] text-slate-400 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <div className="h-20 flex items-center justify-between px-8 bg-[#0a0f1d] border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-600/20"><HardDrive className="w-5 h-5 text-white" /></div>
+            <span className="font-bold text-lg text-white tracking-tight uppercase">Drive Hub</span>
+          </div>
+          <button className="lg:hidden p-1 hover:bg-white/10 rounded-lg" onClick={() => setSidebarOpen(false)}><X className="w-6 h-6" /></button>
+        </div>
 
-            const btn = document.getElementById('btn-text');
-            btn.innerText = "Syncing...";
-            
-            const newData = [...savedPasswords, { id: Date.now(), name, pass, date: new Date().toLocaleDateString() }];
-            
-            try {
-                const response = await gapi.client.drive.files.list({ q: `name = '${FILENAME}' and trashed = false` });
-                const files = response.result.files;
-                const metadata = { name: FILENAME, mimeType: 'application/json' };
-                const blob = new Blob([JSON.stringify(newData)], { type: 'application/json' });
+        <nav className="flex-1 py-8 px-4 space-y-1">
+          <div className="px-5 mb-4 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em]">Management</div>
+          <button 
+            onClick={() => setActiveTab('drive')}
+            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'drive' ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 font-bold' : 'hover:bg-white/5 hover:text-white'}`}
+          >
+            <HardDrive className="w-5 h-5" /> Cloud Drive
+          </button>
+          <button 
+            onClick={() => setActiveTab('passwords')}
+            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${activeTab === 'passwords' ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 font-bold' : 'hover:bg-white/5 hover:text-white'}`}
+          >
+            <KeyRound className="w-5 h-5" /> Secret Vault
+          </button>
+        </nav>
 
-                if (files && files.length > 0) {
-                    // Update existing
-                    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${files[0].id}?uploadType=media`, {
-                        method: 'PATCH',
-                        headers: { 'Authorization': `Bearer ${accessToken}` },
-                        body: blob
-                    });
-                } else {
-                    // Create new
-                    const form = new FormData();
-                    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-                    form.append('file', blob);
-                    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${accessToken}` },
-                        body: form
-                    });
-                }
-                
-                savedPasswords = newData;
-                renderList();
-                document.getElementById('site-name').value = '';
-                document.getElementById('site-pass').value = '';
-                btn.innerText = "💾 Save to My Google Drive";
-            } catch (e) { alert("Error saving data!"); btn.innerText = "Save to My Google Drive"; }
-        }
+        <div className="p-6 bg-[#0a0f1d] border-t border-white/5">
+          <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+            <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-black text-xs">OK</div>
+            <div className="flex-1 overflow-hidden">
+              <p className="text-xs font-bold text-white truncate">API Connected</p>
+              <p className="text-[10px] text-emerald-400 font-mono">Secure Session</p>
+            </div>
+          </div>
+        </div>
+      </aside>
 
-        function renderList() {
-            const container = document.getElementById('vault-list');
-            container.innerHTML = savedPasswords.map(item => `
-                <div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-                    <div>
-                        <div class="font-bold text-slate-800">${item.name}</div>
-                        <div class="text-xs text-slate-400 font-mono">${item.pass}</div>
-                    </div>
-                    <div class="text-[10px] text-slate-300">${item.date}</div>
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-10 shrink-0 shadow-sm z-30">
+          <div className="flex items-center gap-6">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-slate-100 rounded-xl"><Menu className="w-7 h-7" /></button>
+            <div className="flex flex-col">
+              <h2 className="font-black text-slate-900 text-xl tracking-tight uppercase">
+                {activeTab === 'drive' ? 'Storage Console' : 'Credentials'}
+              </h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                Active Project <ChevronRight className="w-3 h-3 text-slate-300"/> Root
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {activeTab === 'drive' && (
+              <>
+                <button onClick={createFolder} className="flex items-center gap-2 bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all border border-slate-200">
+                  <FolderPlus className="w-5 h-5" /> <span className="hidden md:inline text-xs uppercase">New Folder</span>
+                </button>
+                <button className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all">
+                  <UploadCloud className="w-5 h-5" /> <span className="hidden md:inline text-xs uppercase tracking-tighter">Upload File</span>
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-auto p-6 lg:p-10">
+          {activeTab === 'drive' ? (
+            <div className="max-w-7xl mx-auto">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  {folderHistory.length > 1 && (
+                    <button onClick={goBack} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm">
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                  )}
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{currentFolderId === 'root' ? 'Home Directory' : 'Sub-Directory'}</span>
                 </div>
-            `).join('');
-        }
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                  <button className="p-2 bg-slate-50 rounded-lg"><Grid className="w-4 h-4 text-blue-600" /></button>
+                  <button className="p-2 hover:bg-slate-50 rounded-lg text-slate-300"><List className="w-4 h-4" /></button>
+                </div>
+              </div>
 
-        function switchTab(tab) {
-            document.getElementById('tab-pass').classList.toggle('hidden', tab !== 'pass');
-            document.getElementById('tab-work').classList.toggle('hidden', tab !== 'work');
-            document.getElementById('nav-pass').className = tab === 'pass' ? 'w-full text-left p-4 rounded-xl font-semibold nav-active' : 'w-full text-left p-4 rounded-xl font-semibold text-slate-500 hover:bg-slate-50';
-            document.getElementById('nav-work').className = tab === 'work' ? 'w-full text-left p-4 rounded-xl font-semibold nav-active' : 'w-full text-left p-4 rounded-xl font-semibold text-slate-500 hover:bg-slate-50';
-        }
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-40 text-slate-400">
+                  <div className="w-14 h-14 border-[5px] border-blue-600 border-t-transparent rounded-full animate-spin mb-6 shadow-xl"></div>
+                  <p className="font-black text-[10px] uppercase tracking-[0.3em]">Synchronizing Data...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                  {files.map(file => (
+                    <div 
+                      key={file.id} 
+                      onClick={() => file.mimeType === 'application/vnd.google-apps.folder' && navigateToFolder(file.id)}
+                      className="group bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-blue-400 hover:-translate-y-1 transition-all cursor-pointer flex flex-col items-center text-center relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 w-full h-1 bg-transparent group-hover:bg-blue-500 transition-colors"></div>
+                      <div className="w-full flex justify-end absolute top-4 right-4">
+                        <button className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-slate-100 rounded-lg transition-all">
+                          <MoreVertical className="w-4 h-4 text-slate-400" />
+                        </button>
+                      </div>
+                      
+                      <div className="py-6 flex items-center justify-center w-full min-h-[120px]">
+                        {file.mimeType === 'application/vnd.google-apps.folder' ? (
+                          <Folder className="w-20 h-20 text-blue-500 fill-blue-500/5 group-hover:scale-110 transition-transform duration-300" />
+                        ) : (
+                          <div className="relative">
+                            {file.thumbnailLink ? (
+                              <img src={file.thumbnailLink} className="w-20 h-20 object-cover rounded-2xl shadow-lg border-2 border-white" alt="" />
+                            ) : (
+                              <File className="w-20 h-20 text-slate-200 group-hover:text-blue-100 transition-colors" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="w-full mt-2">
+                        <h3 className="text-[11px] font-bold text-slate-800 truncate mb-1 px-1" title={file.name}>{file.name}</h3>
+                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.1em] truncate">
+                          {file.mimeType.includes('folder') ? 'Folder' : file.mimeType.split('.').pop()}
+                        </p>
+                      </div>
 
-        function logout() { location.reload(); }
-    </script>
-    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
-</body>
-</html>
+                      {file.mimeType !== 'application/vnd.google-apps.folder' && (
+                        <a 
+                          href={file.webViewLink} target="_blank" rel="noreferrer"
+                          className="mt-5 p-3 w-full bg-slate-50 text-blue-600 rounded-[1.25rem] flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all hover:bg-blue-600 hover:text-white"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> <span className="text-[9px] font-black uppercase tracking-wider">Launch</span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+
+                  {files.length === 0 && !loading && (
+                    <div className="col-span-full flex flex-col items-center justify-center py-40 text-slate-300 bg-white rounded-[4rem] border-2 border-dashed border-slate-100 shadow-inner">
+                      <Folder className="w-20 h-20 mb-6 opacity-10" />
+                      <p className="font-black text-slate-400 tracking-[0.2em] text-[10px] uppercase">Directory Empty</p>
+                      <button onClick={createFolder} className="mt-4 text-blue-600 text-xs font-bold hover:underline">Click to create folder</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="max-w-2xl mx-auto py-32 text-center">
+              <div className="w-24 h-24 bg-white rounded-[2rem] shadow-xl flex items-center justify-center mx-auto mb-10 border border-slate-100">
+                <KeyRound className="w-10 h-10 text-slate-200" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-4 uppercase tracking-tight">Security Vault</h3>
+              <p className="text-slate-500 leading-relaxed mb-10 text-sm font-medium">
+                Manage your credentials and API keys in a strictly encrypted environment. All data is linked to your authenticated session.
+              </p>
+              <button className="bg-slate-900 text-white px-12 py-4 rounded-[2rem] font-bold shadow-2xl hover:bg-blue-600 transition-all hover:scale-105 active:scale-95 text-xs uppercase tracking-widest">
+                Add New Secret
+              </button>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-10 py-5 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center gap-4 z-[100] border border-white/10 animate-in fade-in slide-in-from-bottom-5">
+          <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          <span className="font-bold text-xs uppercase tracking-widest">{toast.msg}</span>
+        </div>
+      )}
+    </div>
+  );
+}
